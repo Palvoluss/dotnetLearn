@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using api.Data;
+using api.Dtos;
 using api.Dtos.Stock;
+using api.Interfaces;
 using api.Mappers;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace api.Controllers
 {
@@ -14,36 +17,37 @@ namespace api.Controllers
     public class StockController : ControllerBase
     {
         private readonly ApplicationDBContext _context;
+        private readonly IStockRepository _stockRepository;
 
-        public StockController(ApplicationDBContext context)
+        public StockController(ApplicationDBContext context, IStockRepository stockRepository)
         {
+            _stockRepository = stockRepository;
             _context = context;
         }
 
         [HttpGet]
-        public IActionResult GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] SearchSortRequestDto  searchDto, [FromQuery] SortStockRequestDto sortDto, [FromQuery] PageRequestDto pageDto)
         {
-            var stock = _context.Stocks.ToList().Select(s => s.ToStockDto());
-            return Ok(stock);
+            var stock = await _stockRepository.GetAllAsync(searchDto, sortDto, pageDto);
+            return Ok(stock.Select(s => s.ToStockDto()));
         }
 
-        [HttpGet("{id}")]
-        public IActionResult GetById([FromRoute] int id)
+        [HttpGet("{id:int}")]
+        public async Task<IActionResult> GetById([FromRoute] int id)
         {
-            var stock = _context.Stocks.Find(id);
+            var stock = await _stockRepository.GetByIdAsync(id); 
             if (stock == null)
             {
                 return NotFound();
             }
             return Ok(stock.ToStockDto());
         }
-
+ 
         [HttpPost]
-        public IActionResult Create([FromBody] CreateStockRequestDto stockDto)
+        public async Task<IActionResult> Create([FromBody] CreateStockRequestDto stockDto)
         {
             var stockModel = stockDto.ToStockFromCreateDto();
-            _context.Stocks.Add(stockModel);
-            _context.SaveChanges();
+            await _stockRepository.CreateAsync(stockModel);
             return CreatedAtAction(
                 nameof(GetById), 
                 new { id = stockModel.Id }, 
@@ -51,37 +55,29 @@ namespace api.Controllers
                 );
         }
 
-        [HttpPut("{id}")]
-        public IActionResult Update([FromRoute] int id, [FromBody] UpdateStockRequestDto updateDto)
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateStockRequestDto updateDto)
         {
-            var stockModel = _context.Stocks.FirstOrDefault(s => s.Id == id);
+            var stockModel = await _stockRepository.GetByIdAsync(id);
             if (stockModel == null)
             {
                 return NotFound();
             }
 
-            stockModel.Symbol = updateDto.Symbol;
-            stockModel.CompanyName = updateDto.CompanyName;
-            stockModel.Purchase = updateDto.Purchase;
-            stockModel.LastDiv = updateDto.LastDiv;
-            stockModel.Industry = updateDto.Industry;
-            stockModel.MarketCap = updateDto.MarketCap;
-            
-            _context.SaveChanges();
+            await _stockRepository.UpdateAsync(id, updateDto.ToStockFromUpdate());
             return Ok(stockModel.ToStockDto());
         }
 
         [HttpDelete()]
-        [Route("{id}")]
-        public IActionResult Delete([FromRoute] int id)
+        [Route("{id:int}")]
+        public async Task<IActionResult> Delete([FromRoute] int id)
         {
-            var stockModel = _context.Stocks.FirstOrDefault(s => s.Id == id);
+            var stockModel = await _stockRepository.GetByIdAsync(id);
             if (stockModel == null)
             {
                 return NotFound();
             }
-            _context.Stocks.Remove(stockModel);
-            _context.SaveChanges();
+            await _stockRepository.DeleteAsync(id);
             return NoContent();
         }
     }
